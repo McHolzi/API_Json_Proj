@@ -1,0 +1,12 @@
+from urllib.request import urlopen
+import json
+
+lat = 47.717368
+lon = 16.024047
+key = 'dc4ca35fe35a0e046ab0e8363d0afd5a'
+weather = urlopen(f'https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={key}')
+w = weather.read()
+ps = json.loads(w)
+#print(temp)
+json_weather = json.dumps(ps, indent = 2)
+print(json_weather)
