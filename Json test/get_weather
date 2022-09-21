@@ -1,9 +1,10 @@
 from urllib.request import urlopen
 import json
+from key_pos_file import keyweather, latitude, longitude
 
-lat = 47.717368
-lon = 16.024047
-key = 'dc4ca35fe35a0e046ab0e8363d0afd5a'
+lat = latitude
+lon = longitude
+key = keyweather #this key can be obtained on openweathermap.org
 weather = urlopen(f'https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={key}')
 w = weather.read()
 ps = json.loads(w)
