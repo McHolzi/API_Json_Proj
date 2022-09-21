@@ -1,5 +1,7 @@
 import json
 
+#working with json files
+
 x = [1,2,3,4,5]
 param = {"param1" : 5, "param2" : "threshhold", "param3" : 6}
 p = [4, 'hallo', 3.4, True, None]
