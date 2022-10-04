@@ -1,4 +1,5 @@
 from __future__ import print_function
+from pprint import pprint
 
 import datetime
 import os.path
@@ -54,6 +55,7 @@ def main():
         for event in events:
             start = event['start'].get('dateTime', event['start'].get('date'))
             print(start, event['summary'])
+        pprint(events)
 
     except HttpError as error:
         print('An error occurred: %s' % error)

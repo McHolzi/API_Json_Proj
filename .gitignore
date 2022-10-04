@@ -6,3 +6,4 @@ key_file.json
 credentials.json
 token.json
 /Json_test/__pycache__
+personal_data.py
