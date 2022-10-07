@@ -38,4 +38,4 @@ my_courses = pd.DataFrame()
 free_courses = free_courses.append(data_relevant[data_relevant['Trainer'] == '']) #When there is nothing in the Trainer column, the course is still free
 my_courses = my_courses.append(data_relevant[data_relevant['Trainer'] == trainer_name]) #When my Name is in the Trainer column its already taken by me
 
-pprint(my_courses)
+pprint(free_courses)

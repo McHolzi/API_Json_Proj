@@ -7,4 +7,4 @@ credentials.json
 token.json
 __pycache__/
 personal_data.py
-google_api_proj/__pycache__/
+key_origin_maps.py
