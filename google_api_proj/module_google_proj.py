@@ -1,9 +1,25 @@
+from __future__ import print_function
 import requests
 from key_origin_maps import key, origin, destination
+from pprint import pprint
+import datetime
+from datetime import datetime
+import os.path
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+import pandas as pd
+from personal_data import trainer_name
+import numpy as np
 
 
 
-def get_distance(origin, desitinations):
+
+def get_distance(origin, desitination):
 
     url = f"https://maps.googleapis.com/maps/api/distancematrix/json?origins={origin}&destinations={destination}&departure_time=now&key={key}"
 
@@ -48,10 +64,43 @@ def get_sheet_values(sheetname):
     my_courses = pd.DataFrame()
 
     #### checks for free courses and the courses already taken by me #### 
-    free_courses = free_courses.append(data_relevant[data_relevant['Trainer'] == '']) #When there is nothing in the Trainer column, the course is still free
-    my_courses = my_courses.append(data_relevant[data_relevant['Trainer'] == trainer_name]) #When my Name is in the Trainer column its already taken by me
+    free_courses = data_relevant[data_relevant['Trainer'] == ''] #When there is nothing in the Trainer column, the course is still free
+    my_courses = data_relevant[data_relevant['Trainer'] == trainer_name] #When my Name is in the Trainer column its already taken by me
 
-    pprint(free_courses)
+    #### drops extra Rows, rename Dauer column ######
+    i = free_courses[(free_courses.Ort == '')].index #index of the rows with no 'Ort' in them
+    free_courses = free_courses.drop(i)              #drops the rows 
+    free_courses = free_courses.reset_index(drop=True)
+    free_courses.rename(columns = {'Dauer (h)': 'Dauer'}, inplace = True)
+
+    #### gets the dates with / in them, slices out the second Date, saves it in a list #### 
+    temp_new_dates = free_courses[(free_courses.Kursdatum.str.contains('/'))] #takes out only the rows with '/' in the date
+    replace_values = temp_new_dates.Kursdatum.str.slice(start=3, stop = 7)    #slices out the '/' and the Day of the date thats following
+    replace_values_list = replace_values.values.tolist()                      # converts it to list 
+
+    #### replaces the dates with the one before the / Delimiter (e.g. 11./12.10.2022 will be 11.10.2022), probably way more complicated then necessary ### 
+    for i in range(len(replace_values_list)):
+        temp_new_dates = temp_new_dates.replace(temp_new_dates.iloc[i]['Kursdatum'], temp_new_dates.Kursdatum.str.replace(replace_values_list[i], '').iloc[i])
+
+    
+    ##### split the dates with '/' in them, deletes the ones that are not complete (e.g. 10. which comes from splitting 10./11.10.2022), appends the full dates (e.g. 10.10.2022) #######
+    free_courses = free_courses.assign(Kursdatum = free_courses['Kursdatum'].str.split('/')).explode('Kursdatum') #splits the dates with '/' in them
+    free_courses = free_courses.reset_index(drop = True)                                                          
+    index_newdate = free_courses[(~free_courses.Kursdatum.str.contains('2022'))].index                            #index of the dates that are incomplete
+    free_courses = free_courses.drop(index_newdate, axis=0)                                                       #drops the incomplete rows
+    free_courses = free_courses.append(temp_new_dates)                                                            #appends the corresponding complete rows
+    free_courses = free_courses.reset_index(drop=True)
+
+    #### adds new column with datetime timestamp #####
+    free_courses['Datetime'] = free_courses['Kursdatum']+'/'+free_courses['Beginn']+':00'+'+02:00'
+    free_courses['Datetime'] = pd.to_datetime(free_courses['Datetime'])
+    index_16 = free_courses[(free_courses.Dauer == 16)].index
+    free_courses.loc[index_16, 'Dauer'] = 8
+    
+
+
+    return(free_courses)
+
 
 def get_values_calendar():
 
@@ -82,12 +131,12 @@ def get_values_calendar():
 
     try:
         service = build('calendar', 'v3', credentials=creds)
-
+        count = 2
         # Call the Calendar API
         now = datetime.datetime.utcnow().isoformat() + 'Z'  # 'Z' indicates UTC time
-        print('Getting the upcoming 10 events')
+        print(f'Getting the upcoming {count} events')
         events_result = service.events().list(calendarId='primary', timeMin=now,
-                                              maxResults=10, singleEvents=True,
+                                              maxResults=count, singleEvents=True,
                                               orderBy='startTime').execute()
         events = events_result.get('items', [])
 
@@ -99,3 +148,13 @@ def get_values_calendar():
         print('An error occurred: %s' % error)
 
     return events
+
+'''
+events = get_values_calendar()
+pprint(events)
+#for event in events:
+#    start = event['start'].get('dateTime', event['start'].get('date'))
+#    print(start, event['summary'])
+'''
+sheetval = get_sheet_values('test')
+print(sheetval)
