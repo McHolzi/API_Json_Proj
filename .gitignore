@@ -5,6 +5,6 @@ key_pos_file.py
 key_file.json
 credentials.json
 token.json
-__pycache__/
 personal_data.py
 key_origin_maps.py
+__pycache__
