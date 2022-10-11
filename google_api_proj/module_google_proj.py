@@ -4,6 +4,7 @@ from key_origin_maps import key, origin, destination
 from pprint import pprint
 import datetime
 from datetime import datetime
+import datetime
 import os.path
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -21,14 +22,14 @@ import numpy as np
 
 def get_distance(origin, desitination):
 
-    url = f"https://maps.googleapis.com/maps/api/distancematrix/json?origins={origin}&destinations={destination}&departure_time=now&key={key}"
+    url = f"https://maps.googleapis.com/maps/api/distancematrix/json?origins={address}&destinations={destination}&departure_time=now&key={key}"
 
     payload={}
     headers = {}
 
     response = requests.request("GET", url, headers=headers, data=payload)
 
-    return response.text
+    return response.__dict__
 
 
 
@@ -102,10 +103,10 @@ def get_sheet_values(sheetname):
     return(free_courses)
 
 
-def get_values_calendar():
+def get_values_calendar(count):
 
     # If modifying these scopes, delete the file token.json.
-    SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
+    SCOPES = ['https://www.googleapis.com/auth/calendar']
 
 
     """Shows basic usage of the Google Calendar API.
@@ -131,7 +132,6 @@ def get_values_calendar():
 
     try:
         service = build('calendar', 'v3', credentials=creds)
-        count = 2
         # Call the Calendar API
         now = datetime.datetime.utcnow().isoformat() + 'Z'  # 'Z' indicates UTC time
         print(f'Getting the upcoming {count} events')
@@ -149,12 +149,70 @@ def get_values_calendar():
 
     return events
 
-'''
-events = get_values_calendar()
-pprint(events)
-#for event in events:
-#    start = event['start'].get('dateTime', event['start'].get('date'))
-#    print(start, event['summary'])
-'''
-sheetval = get_sheet_values('test')
-print(sheetval)
+def set_values_calendar(event):
+
+     # If modifying these scopes, delete the file token.json.
+    SCOPES = ['https://www.googleapis.com/auth/calendar']
+
+
+    """Shows basic usage of the Google Calendar API.
+    Prints the start and name of the next 10 events on the user's calendar.
+    """
+    creds = None
+    # The file token.json stores the user's access and refresh tokens, and is
+    # created automatically when the authorization flow completes for the first
+    # time.
+    if os.path.exists('google_api_proj/token.json'):
+        creds = Credentials.from_authorized_user_file('google_api_proj/token.json', SCOPES)
+    # If there are no (valid) credentials available, let the user log in.
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                'google_api_proj/credentials.json', SCOPES)
+            creds = flow.run_local_server(port=0)
+        # Save the credentials for the next run
+        with open('google_api_proj/token.json', 'w') as token:
+            token.write(creds.to_json())
+
+    try:
+        service = build('calendar', 'v3', credentials=creds)
+        ''' event = {
+    'summary': 'Google I/O 2015',
+    'location': '800 Howard St., San Francisco, CA 94103',
+    'description': 'A chance to hear more about Google\'s developer products.',
+    'start': {
+        'dateTime': '2022-05-28T09:00:00-07:00',
+        'timeZone': 'America/Los_Angeles',
+    },
+    'end': {
+        'dateTime': '2022-05-28T17:00:00-07:00',
+        'timeZone': 'America/Los_Angeles',
+    },
+
+    'reminders': {
+        'useDefault': False,
+        'overrides': [
+        {'method': 'email', 'minutes': 24 * 60},
+        {'method': 'popup', 'minutes': 10},
+        ],
+    },
+    }
+        '''
+        event = service.events().insert(calendarId='primary', body=event).execute()
+
+    except HttpError as error:
+        print('An error occurred: %s' % error)
+
+
+def get_values_maps(origin, destination):
+    url = f"https://maps.googleapis.com/maps/api/distancematrix/json?origins={origin}&destinations={destination}&departure_time=now&key={key}"
+
+    payload={}
+    headers = {}
+
+    response = requests.request("GET", url, headers=headers, data=payload)
+
+    return response.text
+
