@@ -14,9 +14,9 @@ from googleapiclient.errors import HttpError
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import pandas as pd
-from personal_data import trainer_name
+from personal_data import trainer_name, address
 import numpy as np
-
+import json
 
 
 
@@ -68,14 +68,19 @@ def get_sheet_values(sheetname):
     free_courses = data_relevant[data_relevant['Trainer'] == ''] #When there is nothing in the Trainer column, the course is still free
     my_courses = data_relevant[data_relevant['Trainer'] == trainer_name] #When my Name is in the Trainer column its already taken by me
 
+    return(free_courses, my_courses)
+
+
+def clean_sheet_values(sheet_values):
+    
     #### drops extra Rows, rename Dauer column ######
-    i = free_courses[(free_courses.Ort == '')].index #index of the rows with no 'Ort' in them
-    free_courses = free_courses.drop(i)              #drops the rows 
-    free_courses = free_courses.reset_index(drop=True)
-    free_courses.rename(columns = {'Dauer (h)': 'Dauer'}, inplace = True)
+    i = sheet_values[(sheet_values.Ort == '')].index #index of the rows with no 'Ort' in them
+    sheet_values = sheet_values.drop(i)              #drops the rows 
+    sheet_values = sheet_values.reset_index(drop=True)
+    sheet_values.rename(columns = {'Dauer (h)': 'Dauer'}, inplace = True)
 
     #### gets the dates with / in them, slices out the second Date, saves it in a list #### 
-    temp_new_dates = free_courses[(free_courses.Kursdatum.str.contains('/'))] #takes out only the rows with '/' in the date
+    temp_new_dates = sheet_values[(sheet_values.Kursdatum.str.contains('/'))] #takes out only the rows with '/' in the date
     replace_values = temp_new_dates.Kursdatum.str.slice(start=3, stop = 7)    #slices out the '/' and the Day of the date thats following
     replace_values_list = replace_values.values.tolist()                      # converts it to list 
 
@@ -85,27 +90,29 @@ def get_sheet_values(sheetname):
 
     
     ##### split the dates with '/' in them, deletes the ones that are not complete (e.g. 10. which comes from splitting 10./11.10.2022), appends the full dates (e.g. 10.10.2022) #######
-    free_courses = free_courses.assign(Kursdatum = free_courses['Kursdatum'].str.split('/')).explode('Kursdatum') #splits the dates with '/' in them
-    free_courses = free_courses.reset_index(drop = True)                                                          
-    index_newdate = free_courses[(~free_courses.Kursdatum.str.contains('2022'))].index                            #index of the dates that are incomplete
-    free_courses = free_courses.drop(index_newdate, axis=0)                                                       #drops the incomplete rows
-    free_courses = free_courses.append(temp_new_dates)                                                            #appends the corresponding complete rows
-    free_courses = free_courses.reset_index(drop=True)
+    sheet_values = sheet_values.assign(Kursdatum = sheet_values['Kursdatum'].str.split('/')).explode('Kursdatum') #splits the dates with '/' in them
+    sheet_values = sheet_values.reset_index(drop = True)                                                          
+    index_newdate = sheet_values[(~sheet_values.Kursdatum.str.contains('2022'))].index                            #index of the dates that are incomplete
+    sheet_values = sheet_values.drop(index_newdate, axis=0)                                                       #drops the incomplete rows
+    sheet_values = sheet_values.append(temp_new_dates)                                                            #appends the corresponding complete rows
+    sheet_values = sheet_values.reset_index(drop=True)
 
-    #### adds new column with datetime timestamp #####
-    free_courses['Datetime'] = free_courses['Kursdatum']+'/'+free_courses['Beginn']+':00'+'+02:00'
-    free_courses['Datetime'] = pd.to_datetime(free_courses['Datetime'])
-    index_16 = free_courses[(free_courses.Dauer == 16)].index
-    free_courses.loc[index_16, 'Dauer'] = 8
-    
+    #### adds new column with datetime timestamp, adds new column with Endtime (Beginn + Dauer)#####
+    format_time_before = '%d.%m.%Y/%H:%M:%S%z'
+    sheet_values['Starttime'] = sheet_values['Kursdatum']+'/'+sheet_values['Beginn']+':00'+'+02:00'
+    sheet_values['Starttime'] = sheet_values['Starttime'].apply(datetime.datetime.strptime, args= (format_time_before,))
+    index_16h = sheet_values[(sheet_values.Dauer == 16)].index
+    sheet_values.loc[index_16h, 'Dauer'] = 8
+    index_6h = sheet_values[(sheet_values.Dauer == 6)].index
+    sheet_values.loc[index_6h, 'Endtime'] = pd.to_datetime(sheet_values['Starttime'].astype(str)) + pd.DateOffset(hours = 6)
+    index_8h = sheet_values[(sheet_values.Dauer == 8)].index
+    sheet_values.loc[index_8h, 'Endtime'] = pd.to_datetime(sheet_values['Starttime'].astype(str)) + pd.DateOffset(hours = 8)
 
+    return(sheet_values)
 
-    return(free_courses)
+def get_creds_calendar():
 
-
-def get_values_calendar(count):
-
-    # If modifying these scopes, delete the file token.json.
+       # If modifying these scopes, delete the file token.json.
     SCOPES = ['https://www.googleapis.com/auth/calendar']
 
 
@@ -116,19 +123,25 @@ def get_values_calendar(count):
     # The file token.json stores the user's access and refresh tokens, and is
     # created automatically when the authorization flow completes for the first
     # time.
-    if os.path.exists('google_api_proj/token.json'):
-        creds = Credentials.from_authorized_user_file('google_api_proj/token.json', SCOPES)
+    if os.path.exists(r'C:\Users\Marco Holzer\API_Json_Proj\google_api_proj\token.json'):
+        creds = Credentials.from_authorized_user_file(r'C:\Users\Marco Holzer\API_Json_Proj\google_api_proj\token.json', SCOPES)
     # If there are no (valid) credentials available, let the user log in.
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
             flow = InstalledAppFlow.from_client_secrets_file(
-                'google_api_proj/credentials.json', SCOPES)
+                r'C:\Users\Marco Holzer\API_Json_Proj\google_api_proj\credentials.json', SCOPES)
             creds = flow.run_local_server(port=0)
         # Save the credentials for the next run
-        with open('google_api_proj/token.json', 'w') as token:
+        with open(r'C:\Users\Marco Holzer\API_Json_Proj\google_api_proj\token.json', 'w') as token:
             token.write(creds.to_json())
+
+    return creds
+
+def get_values_calendar(count):
+
+    creds = get_creds_calendar()
 
     try:
         service = build('calendar', 'v3', credentials=creds)
@@ -151,30 +164,7 @@ def get_values_calendar(count):
 
 def set_values_calendar(event):
 
-     # If modifying these scopes, delete the file token.json.
-    SCOPES = ['https://www.googleapis.com/auth/calendar']
-
-
-    """Shows basic usage of the Google Calendar API.
-    Prints the start and name of the next 10 events on the user's calendar.
-    """
-    creds = None
-    # The file token.json stores the user's access and refresh tokens, and is
-    # created automatically when the authorization flow completes for the first
-    # time.
-    if os.path.exists('google_api_proj/token.json'):
-        creds = Credentials.from_authorized_user_file('google_api_proj/token.json', SCOPES)
-    # If there are no (valid) credentials available, let the user log in.
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                'google_api_proj/credentials.json', SCOPES)
-            creds = flow.run_local_server(port=0)
-        # Save the credentials for the next run
-        with open('google_api_proj/token.json', 'w') as token:
-            token.write(creds.to_json())
+    creds = get_creds_calendar()
 
     try:
         service = build('calendar', 'v3', credentials=creds)
@@ -205,6 +195,33 @@ def set_values_calendar(event):
     except HttpError as error:
         print('An error occurred: %s' % error)
 
+def change_colour_events(event_count, colorid):
+
+    creds = get_creds_calendar()
+    events = get_values_calendar(event_count)
+
+    for event in events:
+
+        if 'colorId' in event and event['colorId'] != colorid and event['organizer'].get('displayName') == 'Schulung Burgenland':
+            try:
+                service = build('calendar', 'v3', credentials=creds)
+                event['colorId'] = str(colorid)
+                updated_event = service.events().update(calendarId='primary', eventId=event['id'], body=event).execute()
+            
+            except HttpError as error:
+                print('An error occurred: %s' % error)
+
+        if 'colorId' not in event and event['organizer'].get('displayName') == 'Schulung Burgenland':
+            
+            try:
+                service = build('calendar', 'v3', credentials=creds)
+                event['colorId'] = str(colorid)
+                updated_event = service.events().update(calendarId='primary', eventId=event['id'], body=event).execute()
+                print(event)
+            except HttpError as error:
+                print('An error occurred: %s' % error)
+
+    return True
 
 def get_values_maps(origin, destination):
     url = f"https://maps.googleapis.com/maps/api/distancematrix/json?origins={origin}&destinations={destination}&departure_time=now&key={key}"
@@ -216,3 +233,81 @@ def get_values_maps(origin, destination):
 
     return response.text
 
+
+def add_driving_time(event_count, organizer_name = 'Schulung Burgenland'):
+    ####### reads the events and gets the starttime of the ones with the right Organizer
+    ####### gets the location of the same events, and asks the maps api for the driving time (distance and stuff available as well)
+    ####### adds the driving Time to the start time (needs to be changed, was just for troubleshooting)
+    ####### needs to be written in a function
+    events = get_values_calendar(event_count)
+
+    format_time = '%Y-%m-%dT%H:%M:%S%z'
+    event_last = {'summary' : ''}
+    for event in events: 
+        organizer = event['organizer'].get('displayName')
+        check = 'Dauer' not in event_last['summary']
+
+        if organizer == organizer_name and 'Dauer' not in event_last['summary']:
+            buffer_time = datetime.timedelta(minutes = 20)
+            starttime =  datetime.datetime.strptime(event['start'].get('dateTime'), format_time) 
+            starttime_drive = starttime - buffer_time
+            place = event['location']  
+            distance = get_values_maps(address, place)
+            dist_json = json.loads(distance)
+            driving_time = datetime.timedelta(minutes = round(dist_json['rows'][0]['elements'][0]['duration']['value']/60))
+            time_for_drive = starttime - driving_time - buffer_time
+            print(organizer + ' in ' + place + ' Dauer:' + str(round(dist_json['rows'][0]['elements'][0]['duration']['value']/60)))
+
+     ####### creates new event with the start and endtime calculated 
+            event = {
+                        'summary': '',
+                        'description': 'Fahrt zum Kurs',
+                        'start': {
+                            'dateTime': '',
+                        },
+                        'end': {
+                            'dateTime': '',
+                        },
+                        'colorId': '8',
+
+                        }
+            event['start']['dateTime'] = time_for_drive.strftime(format_time)
+            event['end']['dateTime'] = starttime_drive.strftime(format_time)
+            event['summary'] = 'Dauer: ' + str(driving_time)
+            
+            set_values_calendar(event)
+            print('Fahrzeit hinzugefuegt')
+
+        event_last = event
+        
+
+def compare_calendar_sheets(free_courses_sheets, events_calendar):
+
+    event_df_final = pd.DataFrame(columns = ['Name', 'Starttime', 'Endtime', 'Organizer'])
+    for event in events_calendar: 
+        if event['start'].get('dateTime'):
+            event_single = {
+
+                'Name': [event['summary']],
+                'Starttime': [event['start'].get('dateTime')],
+                'Endtime': [event['end'].get('dateTime')],
+                'Organizer': [event['organizer'].get('displayName')]
+                }
+        else: 
+             event_single = {
+
+                'Name': [event['summary']],
+                'Starttime': [event['start'].get('date')],
+                'Endtime': [event['end'].get('date')],
+                'Organizer': [event['organizer'].get('displayName')]
+                }
+
+        event_df = pd.DataFrame(data = event_single)
+        event_df_final = event_df_final.append(event_df)
+    event_df_final = event_df_final.reset_index()
+    event_df_final = event_df_final.drop(columns="index")
+    event_df_final['Dauer'] = pd.to_datetime(event_df_final['Endtime']) - pd.to_datetime(event_df_final['Starttime'])
+
+    return event_df_final
+       
+        
