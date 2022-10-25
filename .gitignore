@@ -8,3 +8,5 @@ token.json
 personal_data.py
 key_origin_maps.py
 __pycache__
+.tmp.driveupload
+credentials_old.json
